@@ -1,0 +1,80 @@
+name: CI
+on:
+  # - pull_request
+  - push
+jobs:
+  build:
+    name: ${{ matrix.os }} / ghc ${{ matrix.ghc }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        ghc:
+          # - '8.10.1'
+          - '8.8.3'
+          - '8.6.5'
+          - '8.4.4'
+          - '8.2.2'
+        cabal:
+          - '3.2'
+        os:
+          - ubuntu-latest
+          - macOS-latest
+          # - windows-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup Haskell
+        id: setup-haskell-cabal
+        uses: actions/setup-haskell@v1.1
+        with:
+          ghc-version: ${{ matrix.ghc }}
+          cabal-version: ${{ matrix.cabal }}
+      - name: Cache cabal-store
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.setup-haskell-cabal.outputs.cabal-store }}
+          key: ${{ runner.os }}-${{ matrix.ghc }}-cabal
+      - name: Install Ubuntu packages
+        if: runner.os == 'Linux'
+        run: sudo apt-get install libgtk2.0-dev
+      - name: Install homebrew packages
+        if: runner.os == 'macOS'
+        run: brew install gcc@9 gtk+ pkg-config
+      - name: Set extra cabal build options for macOS
+        if: runner.os == 'macOS'
+        run: echo "::set-env name=CABAL_BUILD_OPTIONS::--constraint='gtk +have-quartz-gtk' --with-gcc=gcc-9"
+      - name: Install Haskell dependencies
+        run: |
+          echo $CABAL_BUILD_OPTIONS
+          eval cabal build $CABAL_BUILD_OPTIONS --enable-tests --enable-benchmarks --dep -j all
+          eval cabal build $CABAL_BUILD_OPTIONS --disable-tests --disable-benchmarks --dep -j all
+      - name: Build
+        run: |
+          DISTDIR=$(mktemp -d /tmp/dist-test.XXXX)
+          # Packaging...
+          cabal sdist all
+          # Unpacking...
+          mv dist-newstyle/sdist/*.tar.gz ${DISTDIR}/
+          cd ${DISTDIR} || false
+          find . -maxdepth 1 -type f -name '*.tar.gz' -exec tar -xvf '{}' \;
+          find . -maxdepth 1 -type f -name '*.tar.gz' -exec rm       '{}' \;
+          PKGDIR_threadscope="$(find . -maxdepth 1 -type d -regex '.*/threadscope-[0-9.]*')"
+          # Generate cabal.project
+          rm -rf cabal.project cabal.project.local cabal.project.freeze
+          touch cabal.project
+          echo "packages: ${PKGDIR_threadscope}" >> cabal.project
+          for pkg in $($HCPKG list --simple-output); do
+            echo $pkg | sed 's/-[^-]*$//' | (grep -vE -- '^(threadscope)$' || true) | sed 's/^/constraints: /' | sed 's/$/ installed/' >> cabal.project.local;
+          done
+          cat cabal.project || true
+          cat cabal.project.local || true
+          # Building...
+          # this builds all libraries and executables (without tests/benchmarks)
+          eval cabal build $CABAL_BUILD_OPTIONS --disable-tests --disable-benchmarks all
+          # Building with tests and benchmarks...
+          # build & run tests, build benchmarks
+          eval cabal build $CABAL_BUILD_OPTIONS --enable-tests --enable-benchmarks all
+          # cabal check...
+          (cd ${PKGDIR_threadscope} && cabal -vnormal check)
+          # Building without installed constraints for packages in global-db...
+          rm -f cabal.project.local
+          eval cabal build $CABAL_BUILD_OPTIONS --disable-tests --disable-benchmarks all
