@@ -132,13 +132,13 @@ jobs:
         with:
           update: true
           path-type: inherit
+          install: mingw-w64-x86_64-pkg-config mingw-w64-x86_64-gtk2
+          cache: true
       - name: Cache cabal-store
         uses: actions/cache@v2
         with:
           path: ${{ steps.setup-haskell-cabal.outputs.cabal-store }}
           key: ${{ runner.os }}-${{ matrix.ghc }}-cabal
-      - name: Install system dependencies
-        run: msys2 pacman --noconfirm -Sy mingw-w64-x86_64-pkg-config mingw-w64-x86_64-gtk2
       - name: Build Haskell dependencies
         run: msys2 cabal build -j1 all --dep
       - name: Build ThreadScope
