@@ -78,8 +78,8 @@ jobs:
           eval cabal build $CABAL_BUILD_OPTIONS --disable-tests --disable-benchmarks all
       - name: Prepare Release
         run: |
-          cp $(find dist-newstyle/ -type f -name threadscope -exec test -x {} \; -print) threadscope.PLATFORM.ghc-$GHCVER
-          gzip -f threadscope.$PLATFORM.ghc-$GHCVER
+          cp $(find dist-newstyle/ -type f -name threadscope -exec test -x {} \; -print) "threadscope.$PLATFORM.ghc-$GHCVER"
+          gzip -f "threadscope.$PLATFORM.ghc-$GHCVER"
         env:
           GHCVER: ${{ matrix.ghc }}
           PLATFORM: ${{ matrix.os }}
